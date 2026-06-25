@@ -1,0 +1,187 @@
+<!-- public/jobs.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JobBoard — Jobs</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <h1>JobBoard</h1>
+  <div>
+    <span id="username" style="color:#aaa; font-size:14px;"></span>
+    <a href="#" onclick="logout()">Logout</a>
+  </div>
+</nav>
+
+<div class="jobs-container">
+  <div class="jobs-header">
+    <h2>Available Jobs</h2>
+    <button class="btn-post" onclick="togglePostForm()">+ Post a Job</button>
+  </div>
+
+  <!-- Post Job Form -->
+  <div id="postForm" style="display:none; background:#fff; padding:25px; border-radius:10px; margin-bottom:25px; box-shadow:0 2px 10px rgba(0,0,0,0.08)">
+    <h3 style="margin-bottom:15px;">Post a New Job</h3>
+    <input type="text" id="title" placeholder="Job Title" />
+    <input type="text" id="company" placeholder="Company Name" />
+    <input type="text" id="location" placeholder="Location" />
+    <textarea id="description" placeholder="Job Description" rows="3"></textarea>
+    <button onclick="postJob()">Post Job</button>
+  </div>
+
+  <!-- Tabs -->
+  <div style="display:flex; gap:10px; margin-bottom:20px;">
+    <button class="tab-btn active" id="tab-live" onclick="switchTab('live')">🌐 Live Jobs</button>
+    <button class="tab-btn" id="tab-mine" onclick="switchTab('mine')">📋 Posted Jobs</button>
+  </div>
+
+  <div id="jobsList"></div>
+</div>
+
+<div id="notification"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const token = localStorage.getItem("token");
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  if (!token) window.location.href = "index.html";
+
+  document.getElementById("username").textContent = `Hi, ${user.name}`;
+
+  const socket = io();
+  socket.on("newJob", (data) => { showNotification(data.message); });
+  socket.on("newApplication", (data) => { showNotification(data.message); });
+
+  function showNotification(msg) {
+    const n = document.getElementById("notification");
+    n.textContent = msg;
+    n.style.display = "block";
+    setTimeout(() => n.style.display = "none", 4000);
+  }
+
+  function togglePostForm() {
+    const form = document.getElementById("postForm");
+    form.style.display = form.style.display === "none" ? "block" : "none";
+  }
+
+  function switchTab(tab) {
+    document.getElementById("tab-live").classList.toggle("active", tab === "live");
+    document.getElementById("tab-mine").classList.toggle("active", tab === "mine");
+    if (tab === "live") loadLiveJobs();
+    else loadMyJobs();
+  }
+
+  // Load real jobs from free Arbeitnow API
+  async function loadLiveJobs() {
+    const list = document.getElementById("jobsList");
+    list.innerHTML = "<p style='color:#888'>Loading live jobs...</p>";
+
+    try {
+      const res = await fetch("https://www.arbeitnow.com/api/job-board-api?page=1");
+      const data = await res.json();
+      const jobs = data.data.slice(0, 10); // show 10 jobs
+
+      list.innerHTML = "";
+      jobs.forEach(job => {
+        list.innerHTML += `
+          <div class="job-card">
+            <h3>${job.title}</h3>
+            <div class="company">${job.company_name}</div>
+            <div class="location">📍 ${job.location || "Remote"}</div>
+            <div class="description">${job.description.replace(/<[^>]*>/g, "").slice(0, 150)}...</div>
+            <div style="margin-top:10px;">
+              <a href="${job.url}" target="_blank" class="apply-btn" style="text-decoration:none; padding:8px 20px;">View Job →</a>
+            </div>
+          </div>
+        `;
+      });
+    } catch (err) {
+      list.innerHTML = "<p style='color:red'>Failed to load live jobs. Check your internet.</p>";
+    }
+  }
+
+  // Load jobs posted by users on your app
+  async function loadMyJobs() {
+    const list = document.getElementById("jobsList");
+    list.innerHTML = "<p style='color:#888'>Loading...</p>";
+
+    const res = await fetch("/jobs");
+    const data = await res.json();
+
+    list.innerHTML = "";
+
+    if (data.data.length === 0) {
+      list.innerHTML = "<p style='color:#888'>No jobs posted yet. Be the first!</p>";
+      return;
+    }
+
+    data.data.forEach(job => {
+      list.innerHTML += `
+        <div class="job-card">
+          <h3>${job.title}</h3>
+          <div class="company">${job.company}</div>
+          <div class="location">📍 ${job.location}</div>
+          <div class="description">${job.description}</div>
+          <div class="applicants">👥 ${job.applicants.length} applicant(s)</div>
+          <button class="apply-btn" onclick="applyJob('${job._id}')">Apply Now</button>
+        </div>
+      `;
+    });
+  }
+
+  async function postJob() {
+    const body = {
+      title: document.getElementById("title").value,
+      company: document.getElementById("company").value,
+      location: document.getElementById("location").value,
+      description: document.getElementById("description").value,
+    };
+
+    const res = await fetch("/jobs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      document.getElementById("postForm").style.display = "none";
+      switchTab("mine");
+    } else {
+      const data = await res.json();
+      alert(data.error);
+    }
+  }
+
+  async function applyJob(jobId) {
+    const res = await fetch(`/jobs/${jobId}/apply`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    const data = await res.json();
+    alert(data.message || data.error);
+    loadMyJobs();
+  }
+
+  function logout() {
+    localStorage.clear();
+    window.location.href = "index.html";
+  }
+
+  // Add tab styles
+  const style = document.createElement("style");
+  style.textContent = `.tab-btn { padding: 10px 20px; border: 2px solid #1a1a2e; background: white; border-radius: 6px; cursor: pointer; font-size: 14px; } .tab-btn.active { background: #1a1a2e; color: white; }`;
+  document.head.appendChild(style);
+
+  // Load live jobs by default
+  loadLiveJobs();
+</script>
+
+</body>
+</html>

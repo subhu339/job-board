@@ -1,0 +1,66 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JobBoard — Login</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <h1>JobBoard</h1>
+  <div>
+    <a href="index.html">Login</a>
+    <a href="register.html">Register</a>
+  </div>
+</nav>
+
+<div class="container">
+  <h2>Login</h2>
+
+  <input type="email" id="email" placeholder="Email" />
+  <input type="password" id="password" placeholder="Password" />
+  <button onclick="login()">Login</button>
+
+  <div id="message" class="message" style="display:none"></div>
+
+  <p style="margin-top:15px; text-align:center; font-size:14px;">
+    No account? <a href="register.html">Register here</a>
+  </p>
+</div>
+
+<script>
+  async function login() {
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    const msg = document.getElementById("message");
+
+    const res = await fetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      // Save token to localStorage
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+
+      msg.className = "message success";
+      msg.textContent = "Login successful! Redirecting...";
+      msg.style.display = "block";
+
+      setTimeout(() => window.location.href = "jobs.html", 1000);
+    } else {
+      msg.className = "message error";
+      msg.textContent = data.error;
+      msg.style.display = "block";
+    }
+  }
+</script>
+
+</body>
+</html>
